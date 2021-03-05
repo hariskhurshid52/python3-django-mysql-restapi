@@ -89,9 +89,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'news_agency',
-        'USER': 'root',
-        'PASSWORD': 'root',
-        'HOST': '127.0.0.1',
+        'USER': 'hariskhurshid',
+        'PASSWORD': '!Devwin2021',
+        'HOST': 'hariskhurshid.mysql.pythonanywhere-services.com',
         'PORT': '3306',
     }
 }
