@@ -88,7 +88,7 @@ WSGI_APPLICATION = 'rest_api.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'news_agency',
+        'NAME': 'hariskhurshid$news_agency',
         'USER': 'hariskhurshid',
         'PASSWORD': '!Devwin2021',
         'HOST': 'hariskhurshid.mysql.pythonanywhere-services.com',
