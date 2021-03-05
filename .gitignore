@@ -1,2 +1,4 @@
 .idea
 env
+
+web_services/migrations/__pycache__/
