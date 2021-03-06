@@ -19,7 +19,8 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('admin/', admin.site.urls),
-    path('', include('news_agency.urls'),''),
-    url(r'^', include('web_services.urls'))
+    #path('admin/', admin.site.urls), #admin
+    path('', include('news_agency.urls'),''), #font end
+    url(r'^', include('web_services.urls')),   #apis
+    url(r'^', include('news_agency.urls'))   #apis
 ]

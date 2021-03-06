@@ -4,10 +4,15 @@ from django.db import models
 # Create your models here.
 
 class Author(models.Model):
-    name = models.CharField(max_length=70, blank=False, default='')
-    username = models.CharField(max_length=200, blank=False, default='')
+    name = models.CharField(max_length=70, blank=False, default='', )
+    username = models.CharField(max_length=200, blank=False, default='',unique=True)
     password = models.CharField(max_length=200, default=False)
     added_date = models.DateTimeField(auto_now_add=True, blank=False, )
+    is_anonymous = None
+    is_authenticated = True
+    USERNAME_FIELD = 'username'
+
+    REQUIRED_FIELDS = []
 
 
 class NewsStories(models.Model):

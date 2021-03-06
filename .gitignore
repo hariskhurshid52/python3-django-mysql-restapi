@@ -1,2 +1,8 @@
 .idea
 env
+
+web_services/migrations/
+
+news_agency/migrations/
+
+directory_service/migrations/
