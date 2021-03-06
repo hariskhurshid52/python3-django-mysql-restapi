@@ -1,17 +1,24 @@
-import json
-
-from django.http import HttpResponse
-from django.shortcuts import render
-from django.http.response import JsonResponse
-from rest_framework.parsers import JSONParser
+import json, jwt
+import datetime
+from django.contrib.auth import authenticate
+from django.http import QueryDict
+from django.http.response import JsonResponse, HttpResponse
 from rest_framework import status
-
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from django.conf import settings
 from web_services.models import Author, NewsStories
 from web_services.serializers import AuthorSerializer, StorySerializer
+
 from rest_framework.decorators import api_view
-from django.shortcuts import get_object_or_404
+from rest_framework_jwt.settings import api_settings
+
+JWT_PAYLOAD_HANDLER = api_settings.JWT_PAYLOAD_HANDLER
+JWT_ENCODE_HANDLER = api_settings.JWT_ENCODE_HANDLER
+
 
 # Create your views here.
+
 
 @api_view(['GET', 'POST', 'DELETE'])
 def authors_list(request):
@@ -39,15 +46,25 @@ def authors_list(request):
 def login(request):
     if "POST" == request.method:
         author_data = request.POST
+        print(type(author_data))
         if author_data.get('username') is None:
             return HttpResponse('Username can not be empty', status=status.HTTP_400_BAD_REQUEST,
                                 content_type='text/plan')
         elif author_data.get('password') is None:
             return HttpResponse('Password can not be empty', status=status.HTTP_400_BAD_REQUEST,
                                 content_type='text/plan')
-        response = Author.objects.filter(username=author_data.get('username'), password=author_data.get('password'))
-        if len(response) == 1:
-            return HttpResponse('Successfully login', status=status.HTTP_200_OK)
+        response = Author.objects.filter(username__exact=author_data.get('username'),
+                                         password__exact=author_data.get('password')).first()
+        auth_serilizer = AuthorSerializer(response).data
+        # response =json.loads(json.dumps(response))
+        print(auth_serilizer.get('username'))
+        if not auth_serilizer.get('username') is None:
+            access_token = generate_access_token(auth_serilizer)
+            refresh_token = generate_refresh_token(auth_serilizer)
+
+            return JsonResponse(
+                {"status": 'Successfully Login', 'access_token': access_token, 'refresh_token': refresh_token},
+                safe=False, status=status.HTTP_200_OK)
         return HttpResponse('Invalid username or password', status=status.HTTP_400_BAD_REQUEST)
     return HttpResponse("Unknown Method", status=status.HTTP_405_METHOD_NOT_ALLOWED, content_type='text/plan')
 
@@ -62,7 +79,18 @@ def logout(request):
 @api_view(['POST'])
 def post_story(request):
     if "POST" == request.method:
+        if not request.headers.get('Authorization'):
+            return HttpResponse('Missing token', status=status.HTTP_401_UNAUTHORIZED,
+                                content_type='text/plan')
+        token = decode_token(request.headers.get('Authorization'))
+
+        if (not isinstance(token, int)):
+            return HttpResponse(token, status=status.HTTP_400_BAD_REQUEST,
+                                content_type='text/plan')
         story_data = request.POST
+        story_data = request.POST.copy()
+        story_data['author'] = token
+
         if story_data.get('headline') is None:
             return HttpResponse('Headline can not be empty', status=status.HTTP_400_BAD_REQUEST,
                                 content_type='text/plan')
@@ -92,8 +120,19 @@ def post_story(request):
 
 @api_view(['GET'])
 def get_stories(request):
+    print(request.user.is_authenticated)
+    print(request.user)
+    print(request.auth)
     if "GET" == request.method:
-        stories = NewsStories.objects.all()
+        if not request.headers.get('Authorization'):
+            return HttpResponse('Missing token', status=status.HTTP_401_UNAUTHORIZED,
+                                content_type='text/plan')
+        token = decode_token(request.headers.get('Authorization'))
+
+        if (not isinstance(token, int)):
+            return HttpResponse(token, status=status.HTTP_400_BAD_REQUEST,
+                                content_type='text/plan')
+        stories = NewsStories.objects.filter(author_id=token).all()
         # todo forgin key relation
         story_data = request.data
         if story_data.get('story_cat') is not None:
@@ -110,14 +149,62 @@ def get_stories(request):
 @api_view(['POST'])
 def delete_story(request):
     if "POST" == request.method:
+        if not request.headers.get('Authorization'):
+            return HttpResponse('Missing token', status=status.HTTP_401_UNAUTHORIZED,
+                                content_type='text/plan')
+        token = decode_token(request.headers.get('Authorization'))
+
+        if (not isinstance(token, int)):
+            return HttpResponse(token, status=status.HTTP_400_BAD_REQUEST,
+                                content_type='text/plan')
         story_data = request.data
-        if story_data.get('story_key') is  None:
+        if story_data.get('story_key') is None:
             return HttpResponse('Please provide valid story id', status=status.HTTP_400_BAD_REQUEST,
                                 content_type='text/plan')
         try:
-            story = NewsStories.objects.get(pk=story_data.get('story_key'))
+            story = NewsStories.objects.get(pk=story_data.get('story_key'),author_id=token)
             return HttpResponse('Successfully deleted story data', status=status.HTTP_201_CREATED)
         except NewsStories.DoesNotExist:
             return HttpResponse('Failed to delete story', status=status.HTTP_503_SERVICE_UNAVAILABLE,
                                 content_type='text/plan')
     return HttpResponse("Unknown Method", status=status.HTTP_405_METHOD_NOT_ALLOWED, content_type='text/plan')
+
+
+def generate_access_token(user):
+    access_token_payload = {
+        'user_id': user.get('id'),
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=10, minutes=50),
+        'iat': datetime.datetime.utcnow(),
+    }
+    access_token = jwt.encode(access_token_payload,
+                              settings.SECRET_KEY, algorithm='HS256').decode('utf-8')
+    return access_token
+
+
+def generate_refresh_token(user):
+    refresh_token_payload = {
+        'user_id': user.get('id'),
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1),
+        'iat': datetime.datetime.utcnow()
+    }
+    refresh_token = jwt.encode(
+        refresh_token_payload, settings.REFRESH_TOKEN_SECRET, algorithm='HS256').decode('utf-8')
+
+    return refresh_token
+
+
+def decode_token(authorization_heaader):
+    try:
+        # header = 'Token xxxxxxxxxxxxxxxxxxxxxxxx'
+        access_token = authorization_heaader.split(' ')[1]
+        payload = jwt.decode(
+            access_token, settings.SECRET_KEY, algorithms=['HS256'])
+        user = Author.objects.filter(id=payload['user_id']).first()
+        if user is None:
+            return "User not found";
+        return payload['user_id'];
+
+    except jwt.ExpiredSignatureError:
+        return "Expired token"
+    except:
+        return "Invalid token"
